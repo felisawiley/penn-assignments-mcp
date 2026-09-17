@@ -11,7 +11,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+
+load_dotenv()
 
 mcp = FastMCP(
     "assignment-mcp",
@@ -107,8 +110,9 @@ def _all_assignments(client: httpx.Client, course: str | None = None) -> list[di
 
 
 def _week_bounds(now: datetime) -> tuple[datetime, datetime]:
-    """Monday 00:00 to next Monday 00:00, in `now`'s timezone."""
-    monday = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    """Monday 00:00 to next Monday 00:00, in the server's local timezone."""
+    local_now = now.astimezone()
+    monday = (local_now - timedelta(days=local_now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
     return monday, monday + timedelta(days=7)
 
 
