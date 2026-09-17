@@ -1,0 +1,4 @@
+penn-assignments-mcp — Felisa Wiley, 2026
+Built from the "your-first-instrument" starter, Copyright 2026 Jérémie Lumbroso,
+created for CIS 7000: Computationally Assisted Metacognition (Penn, Fall 2026).
+Lineage: the Passage of Time MCP (time.system3.tools) — keep this notice in derivatives.

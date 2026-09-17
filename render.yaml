@@ -1,0 +1,15 @@
+# One-click deploy: https://render.com → New → Blueprint → this repo.
+# Free tier note: the instance sleeps when idle; first call after a nap
+# takes ~30s. Fine for an instrument; know it's there.
+services:
+  - type: web
+    name: assignment-mcp
+    runtime: python
+    plan: free
+    buildCommand: pip install "mcp[cli]>=1.2,<2"  # PINNED — mcp 2.x renamed FastMCP
+    startCommand: python server.py
+    envVars:
+      - key: CANVAS_API_TOKEN
+        sync: false   # set in Render's dashboard, never committed
+      - key: CANVAS_BASE_URL
+        value: https://canvas.upenn.edu
