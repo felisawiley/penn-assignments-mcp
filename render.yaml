@@ -1,15 +1,27 @@
 # One-click deploy: https://render.com → New → Blueprint → this repo.
-# Free tier note: the instance sleeps when idle; first call after a nap
-# takes ~30s. Fine for an instrument; know it's there.
+# Free tier note (ADR-0003): the instance sleeps when idle; first call
+# after a nap takes ~30s. Fine for an instrument; know it's there.
 services:
   - type: web
     name: assignment-mcp
     runtime: python
     plan: free
-    buildCommand: pip install "mcp[cli]>=1.2,<2"  # PINNED — mcp 2.x renamed FastMCP
+    # PINNED — mcp 2.x renamed FastMCP. buildCommand bypasses pyproject.toml,
+    # so the pin must live in BOTH places. httpx and python-dotenv are direct
+    # imports; they are not optional just because mcp happens to pull httpx.
+    buildCommand: pip install "mcp[cli]>=1.2,<2" "httpx>=0.27" "python-dotenv>=1.0" "PyJWT[crypto]>=2.8"
     startCommand: python server.py
     envVars:
       - key: CANVAS_API_TOKEN
         sync: false   # set in Render's dashboard, never committed
       - key: CANVAS_BASE_URL
         value: https://canvas.upenn.edu
+      - key: TZ
+        value: America/New_York   # academic week is Eastern, not the host's UTC (ADR-0007)
+      - key: NEON_AUTH_BASE_URL
+        sync: false   # Neon → Auth → Configuration. Legacy Stack: leave empty
+                      # and set NEON_AUTH_JWKS_URL + STACK_PUB_CLIENT_KEY instead.
+      - key: PUBLIC_URL
+        sync: false   # https://<this-service>.onrender.com — the login page advertises it
+      - key: OWNER_EMAIL
+        sync: false   # only this signed-in email may see the Canvas (ADR-0008)
