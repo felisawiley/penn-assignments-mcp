@@ -10,10 +10,10 @@ The week runs Monday 00:00 through Sunday in the server's local timezone. On Ren
 |---|---|---|
 | This GitHub repo | [`penn-assignments-mcp`](https://github.com/felisawiley/penn-assignments-mcp) | The assignments project. This is the repo to keep editing. |
 | The other GitHub repo | [`canvas-mcp-tool`](https://github.com/felisawiley/canvas-mcp-tool) | Used to be `my-new-instrument`. The same server was built there first. |
-| Render service | `assignment-mcp` | The website Claude calls: `https://assignment-mcp-jysi.onrender.com/mcp`. |
+| Render service | `assignment-mcp` | The website Claude calls: `https://assignment-mcp.onrender.com/mcp`. |
 | Neon | your Neon project | Not tied to either GitHub repo. This server does not use the database connection string. Sign-in uses `NEON_AUTH_BASE_URL` on the Render service. |
 
-Render deploys whichever GitHub repo its Blueprint is pointed at. Point that Blueprint at `felisawiley/penn-assignments-mcp` and sync it. Leave the Render service name as `assignment-mcp`. On that service, set `PUBLIC_URL` to `https://assignment-mcp-jysi.onrender.com` (no `/mcp`). Do not reset the Neon password.
+The Blueprint to keep is **penn-assignments-mcp**, pointed at this repo. Leave the Render service name as `assignment-mcp`. On that service, `PUBLIC_URL` is `https://assignment-mcp.onrender.com` (no `/mcp`). Do not create another Blueprint instance from this repo, and do not reset the Neon password.
 
 ## Tools
 
@@ -63,7 +63,7 @@ PUBLIC_URL=http://127.0.0.1:8000
 OWNER_EMAIL=you@upenn.edu
 ```
 
-`PUBLIC_URL` on Render is `https://<your-service>.onrender.com`. Set `OWNER_EMAIL` to the account you sign in with. Without it, every signed-in user can see this Canvas. A legacy Stack Auth project uses `NEON_AUTH_JWKS_URL` and `STACK_PUB_CLIENT_KEY` instead of `NEON_AUTH_BASE_URL`.
+`PUBLIC_URL` on Render is `https://assignment-mcp.onrender.com`. Set `OWNER_EMAIL` to the account you sign in with. Without it, every signed-in user can see this Canvas. A legacy Stack Auth project uses `NEON_AUTH_JWKS_URL` and `STACK_PUB_CLIENT_KEY` instead of `NEON_AUTH_BASE_URL`. Saving `PUBLIC_URL` takes effect on the next deploy.
 
 ## Run it locally
 
@@ -101,11 +101,10 @@ In claude.ai, open Settings → Connectors and add the printed `https://….tryc
 
 A guest who skips sign-in gets a refusal, not the courses. The first login page can take about a minute while a free-tier server wakes up. Finish sign-in within 5 minutes; the code expires after that.
 
-**Render.** This stays up:
+**Render.** This stays up. The service is already deployed from the **penn-assignments-mcp** Blueprint ([`render.yaml`](render.yaml) sets `TZ=America/New_York`).
 
-1. [render.com](https://render.com) → Sign in with GitHub → **New +** → **Blueprint** → select this repo → **Apply**. [`render.yaml`](render.yaml) creates the `assignment-mcp` service and sets `TZ=America/New_York`.
-2. Open that service → **Environment** and set `CANVAS_API_TOKEN`, `NEON_AUTH_BASE_URL`, `PUBLIC_URL`, and `OWNER_EMAIL`. Render does not read those from git. `PUBLIC_URL` is the service's own `https://….onrender.com` address — paste it once the service exists, then redeploy. If the Blueprint already exists, add the variables there and save.
-3. Point the claude.ai connector at `https://<your-service>.onrender.com/mcp`, with the same **Sign in now** and **Register automatically (DCR)** overrides as the tunnel.
+1. Open the `assignment-mcp` service → **Environment**. Set `CANVAS_API_TOKEN`, `NEON_AUTH_BASE_URL`, `PUBLIC_URL`, and `OWNER_EMAIL`. Render does not read those from git. `PUBLIC_URL` is `https://assignment-mcp.onrender.com`. After saving it, use **Manual Deploy** → **Deploy latest commit** so sign-in advertises that address.
+2. Point the claude.ai connector at `https://assignment-mcp.onrender.com/mcp`, with the same **Sign in now** and **Register automatically (DCR)** overrides as the tunnel.
 
 On the free plan the instance sleeps when idle. The first call after a nap takes about 30 seconds.
 
