@@ -10,10 +10,10 @@ The week runs Monday 00:00 through Sunday in the server's local timezone. On Ren
 |---|---|---|
 | This GitHub repo | [`penn-assignments-mcp`](https://github.com/felisawiley/penn-assignments-mcp) | The assignments project. This is the repo to keep editing. |
 | The other GitHub repo | [`canvas-mcp-tool`](https://github.com/felisawiley/canvas-mcp-tool) | Used to be `my-new-instrument`. The same server was built there first. |
-| Render service | `assignment-mcp` | The website Claude calls: `https://assignment-mcp-jysi.onrender.com/mcp`. |
+| Render service | `assignment-mcp` | The website Claude calls: `https://assignment-mcp-04kl.onrender.com/mcp`. |
 | Neon | your Neon project | Not tied to either GitHub repo. This server does not use the database connection string. Sign-in uses `NEON_AUTH_BASE_URL` on the Render service. |
 
-Render deploys whichever GitHub repo its Blueprint is pointed at. Point that Blueprint at `felisawiley/penn-assignments-mcp` and sync it. Leave the Render service name as `assignment-mcp`. On that service, set `PUBLIC_URL` to `https://assignment-mcp-jysi.onrender.com` (no `/mcp`). Do not reset the Neon password.
+Render deploys whichever GitHub repo its Blueprint is pointed at. Point that Blueprint at `felisawiley/penn-assignments-mcp` and sync it. Leave the Render service name as `assignment-mcp`. On that service, set `PUBLIC_URL` to `https://assignment-mcp-04kl.onrender.com` (no `/mcp`). Do not reset the Neon password.
 
 ## Tools
 
