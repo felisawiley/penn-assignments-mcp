@@ -23,4 +23,5 @@ counting ungraded work as zero.
 **If wrong**: if a stated-time phrase is too often a false match, narrow
 `_minutes_mentioned` instead of guessing a duration. If credit weights
 become available from the registrar, weight the semester mean then. Do not
-blend the six lists into one rank.
+blend the six lists into one rank. Life outside class is a separate
+decision: [ADR-0011](0011-ask-what-is-fixed-outside-class.md).

@@ -24,7 +24,7 @@ Render deploys whichever GitHub repo its Blueprint is pointed at. Point that Blu
 | `assignments(course?)` | Every published assignment, earliest due date first. Pass a course name or code (`CIS 7000`) to limit it to one class. |
 | `due_this_week()` | Assignments due this Monday–Sunday week. The first line names the week and the timezone. |
 | `academic_week()` | This week, next week, and where the load is heavy: two or more due the same day, or two or more from the same course. |
-| `priorities()` | Open work ranked six ways: due soonest, most points, least stated time, most stated time, current grade in each course, and the unweighted mean of those scores. |
+| `priorities(outside?)` | Open work ranked six ways: due soonest, most points, least stated time, most stated time, current grade in each course, and the unweighted mean of those scores. Without `outside`, it says to ask what else is fixed this week before anyone turns the list into a plan. |
 
 The Canvas tools refuse a guest. Coursework is not a shared shelf ([ADR-0008](docs/adr/0008-coursework-is-not-a-commons.md)). A bad or expired token is an error, not a guest.
 

@@ -405,11 +405,31 @@ def _ranked_lines(items: list[dict], *, with_time: bool = False) -> str:
     return "\n".join(lines)
 
 
-def _format_priorities(open_items: list[dict], grades: list[dict]) -> str:
+def _outside_note(outside: str | None) -> str:
+    """Life outside class, only when the person (or a calendar they confirmed) supplied it."""
+    text = (outside or "").strip()
+    if not text:
+        return (
+            "Not a plan yet. Ask what is already fixed outside class this week, "
+            "and which hours should stay empty. Pass that answer back as outside. "
+            "Do not invent a job, a person, a rest block, or a calendar event."
+        )
+    if len(text) > 1500:
+        text = text[:1499].rstrip() + "…"
+    return (
+        "Outside class, as given. Do not schedule schoolwork on top of these, "
+        "and do not add anything that is not written here:\n"
+        + text
+    )
+
+
+def _format_priorities(open_items: list[dict], grades: list[dict], outside: str | None = None) -> str:
     timed = [item for item in open_items if item.get("stated_minutes") is not None]
     by_short = sorted(timed, key=lambda a: (a["stated_minutes"], a["due_at"] or _distant()))
     by_long = sorted(timed, key=lambda a: (-a["stated_minutes"], a["due_at"] or _distant()))
     lines = [
+        _outside_note(outside),
+        "",
         "Open work only. Submitted, graded, and excused assignments are left out.",
         "Canvas does not record how long work takes. A time below is one the assignment text stated.",
         "",
@@ -623,13 +643,17 @@ def academic_week(ctx: Context) -> str:
 
 
 @mcp.tool()
-def priorities(ctx: Context) -> str:
-    """How to order open work, and the grade Canvas has posted.
+def priorities(ctx: Context, outside: str | None = None) -> str:
+    """How to order open work without pretending the week is only school.
 
     Six separate lists, not one blended score: due soonest, most points,
     least stated time, most stated time, current grade in each course,
     and the unweighted mean of those course scores. Time appears only
     when the assignment text states a duration.
+
+    Pass `outside` with what the person said is already fixed, or the
+    calendar events they confirmed. Leave it empty to be told to ask first.
+    This server does not read calendars and does not invent a life.
     """
     refusal = _refuse_canvas(ctx)
     if refusal:
@@ -645,7 +669,7 @@ def priorities(ctx: Context) -> str:
                 **{"include[]": "total_scores"},
             )
         grades = [_course_score(course) for course in courses]
-        return _format_priorities(open_items, grades)
+        return _format_priorities(open_items, grades, outside)
 
     return _call(fetch)
 

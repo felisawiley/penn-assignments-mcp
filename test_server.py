@@ -131,6 +131,16 @@ class PriorityTest(unittest.TestCase):
         self.assertIn("Not weighted by credits.", text)
         self.assertIn("1 course had no score", text)
 
+    def test_a_plan_asks_before_it_invents_a_life(self):
+        bare = server._format_priorities([], [])
+        self.assertIn("Not a plan yet.", bare)
+        self.assertIn("Ask what is already fixed outside class", bare)
+        self.assertNotIn("gym", bare.lower())
+        given = server._format_priorities([], [], outside="Thursday shift 6–10pm. Leave Tuesday night empty.")
+        self.assertIn("Thursday shift 6–10pm.", given)
+        self.assertIn("Do not schedule schoolwork on top of these", given)
+        self.assertNotIn("Not a plan yet.", given)
+
     def test_points_are_not_reported_as_time(self):
         text = server._format_priorities([_item()], [{"course": "CIS 7000", "score": None, "grade": "", "final_score": None, "final_grade": ""}])
         self.assertIn("No open assignment states a time.", text)

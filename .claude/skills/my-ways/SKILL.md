@@ -20,6 +20,15 @@ only when the line says "stated time". Do not turn points into minutes.
 The semester figure is not a credit-weighted GPA. If `priorities` is
 unavailable, say so and use `due_this_week`. Do not invent the ranking.
 
+When I ask how to do the work and still have a life, do not turn the
+due-soonest list into a schedule yet. Ask, in one message, what is already
+fixed outside class this week and which hours should stay empty. If a
+calendar is connected, read this week from every connected account, merge
+the events, show me that list, and ask only about what the calendars do
+not know. Pass what I confirm as `outside` to `priorities`. Do not invent
+a block. Do not put schoolwork on top of a fixed block. Leave the empty
+hours empty.
+
 When I name a class, call `assignments` with that name or code. Use
 `canvas` only when I ask who's teaching, what's in the modules, or what
 was just announced.
