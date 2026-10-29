@@ -197,7 +197,158 @@ def _course_label(course: dict) -> str:
     return (course.get("course_code") or course.get("name") or "course").strip()
 
 
-def _course_assignments(client: httpx.Client, course: dict) -> list[dict]:
+# Module items worth opening next to an assignment. Quiz questions stay out.
+_RELATED_TYPES = {"File": "file", "Page": "page", "ExternalUrl": "link"}
+_TITLE_STOPWORDS = {
+    "a", "an", "and", "the", "of", "to", "for", "in", "on", "or",
+    "assignment", "homework", "hw", "pdf", "doc", "docx", "file",
+}
+_MAX_RELATED = 4
+
+
+def _title_words(name: str) -> set[str]:
+    words = re.findall(r"[a-z0-9]+", name.lower())
+    return {word for word in words if word not in _TITLE_STOPWORDS and (len(word) >= 2 or word.isdigit())}
+
+
+def _titles_match(left: str, right: str) -> bool:
+    """True when two titles are the same work, not merely the same course word."""
+    a, b = _title_words(left), _title_words(right)
+    if not a or not b:
+        return False
+    if a <= b or b <= a:
+        shared = a if len(a) <= len(b) else b
+        return any(len(word) >= 4 or word.isdigit() for word in shared)
+    shared = a & b
+    smaller = min(len(a), len(b))
+    return len(shared) >= 2 and len(shared) / smaller >= 0.5
+
+
+def _course_materials(client: httpx.Client, course_id: int) -> tuple[list[dict], list[dict]]:
+    """Published modules (with items) and files the student can open.
+
+    A 403 here means that course hides files or modules. The assignment
+    list still returns; it just has no extra links.
+    """
+    modules: list[dict] = []
+    try:
+        raw_modules = _get_all(
+            client,
+            f"/courses/{course_id}/modules",
+            **{"include[]": "items"},
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code not in {401, 403, 404}:
+            raise
+        raw_modules = []
+    for module in raw_modules:
+        if module.get("published") is False:
+            continue
+        items = list(module.get("items") or [])
+        count = module.get("items_count")
+        if isinstance(count, int) and count > len(items):
+            try:
+                items = _get_all(
+                    client,
+                    f"/courses/{course_id}/modules/{module['id']}/items",
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in {401, 403, 404}:
+                    raise
+        visible = [item for item in items if item.get("published") is not False]
+        modules.append({
+            "name": module.get("name") or "Module",
+            "url": module.get("html_url") or "",
+            "items": visible,
+        })
+
+    files: list[dict] = []
+    try:
+        raw_files = _get_all(client, f"/courses/{course_id}/files")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code not in {401, 403, 404}:
+            raise
+        raw_files = []
+    for item in raw_files:
+        if item.get("locked_for_user") or item.get("hidden_for_user"):
+            continue
+        title = (item.get("display_name") or item.get("filename") or "").strip()
+        url = item.get("html_url") or ""
+        if title and url:
+            files.append({"title": title, "url": url, "kind": "file"})
+    return modules, files
+
+
+def _context_for(assignment: dict, modules: list[dict], files: list[dict]) -> dict:
+    """Where this assignment sits, and the files or pages that belong with it.
+
+    The match is the module item whose content id is this assignment (or its
+    quiz). Same-module files and pages with a similar title come first, then
+    the two materials placed just above it, then course files with a similar
+    title. Nothing is downloaded.
+    """
+    assignment_id = assignment.get("id")
+    quiz_id = assignment.get("quiz_id")
+    name = assignment.get("name") or ""
+    home = None
+    same_module: list[dict] = []
+    hit_index = None
+    for module in modules:
+        items = module["items"]
+        found = None
+        for index, item in enumerate(items):
+            content_id = item.get("content_id")
+            kind = item.get("type")
+            if kind == "Assignment" and content_id == assignment_id:
+                found = index
+                break
+            if kind == "Quiz" and quiz_id and content_id == quiz_id:
+                found = index
+                break
+        if found is None:
+            continue
+        home = {"name": module["name"], "url": module["url"]}
+        for index, item in enumerate(items):
+            kind = _RELATED_TYPES.get(item.get("type"))
+            if not kind:
+                continue
+            title = (item.get("title") or "").strip()
+            url = item.get("html_url") or ""
+            if not title or not url:
+                continue
+            same_module.append({
+                "title": title,
+                "url": url,
+                "kind": kind,
+                "index": index,
+                "match": _titles_match(name, title),
+            })
+        hit_index = found
+        break
+
+    related: list[dict] = []
+    seen: set[str] = set()
+
+    def add(title: str, url: str, kind: str) -> None:
+        if not url or url in seen or len(related) >= _MAX_RELATED:
+            return
+        seen.add(url)
+        related.append({"title": title, "url": url, "kind": kind})
+
+    for item in same_module:
+        if item["match"]:
+            add(item["title"], item["url"], item["kind"])
+    if hit_index is not None:
+        before = [item for item in same_module if item["index"] < hit_index]
+        for item in before[-2:]:
+            add(item["title"], item["url"], item["kind"])
+    for item in files:
+        if _titles_match(name, item["title"]):
+            add(item["title"], item["url"], item["kind"])
+    return {"module": home, "related": related}
+
+
+def _course_assignments(client: httpx.Client, course: dict, *, with_context: bool = False) -> list[dict]:
     raw = _get_all(
         client,
         f"/courses/{course['id']}/assignments",
@@ -212,6 +363,8 @@ def _course_assignments(client: httpx.Client, course: dict) -> list[dict]:
         submission = item.get("submission") or {}
         description = _plain(item.get("description"))
         out.append({
+            "id": item.get("id"),
+            "quiz_id": item.get("quiz_id"),
             "course": label,
             "name": item.get("name") or "Untitled",
             "due_at": _parse_due(item.get("due_at")),
@@ -226,13 +379,26 @@ def _course_assignments(client: httpx.Client, course: dict) -> list[dict]:
                 "late": bool(submission.get("late")),
             },
         })
+    if with_context and out:
+        modules, files = _course_materials(client, course["id"])
+        for assignment in out:
+            found = _context_for(assignment, modules, files)
+            if found["module"]:
+                assignment["module"] = found["module"]
+            if found["related"]:
+                assignment["related"] = found["related"]
     return out
 
 
-def _all_assignments(client: httpx.Client, course: str | None = None) -> list[dict]:
+def _all_assignments(
+    client: httpx.Client,
+    course: str | None = None,
+    *,
+    with_context: bool = False,
+) -> list[dict]:
     assignments = []
     for item in _resolve_courses(client, course):
-        assignments.extend(_course_assignments(client, item))
+        assignments.extend(_course_assignments(client, item, with_context=with_context))
     distant_future = datetime.max.replace(tzinfo=timezone.utc)
     assignments.sort(key=lambda a: a["due_at"] or distant_future)
     return assignments
@@ -305,7 +471,29 @@ def _format_assignment(a: dict, *, detailed: bool = False) -> str:
         line += f"\n  {url}"
     if detailed and a.get("description"):
         line += f"\n  {a['description']}"
+    if detailed:
+        line += _format_context(a)
     return line
+
+
+def _format_context(a: dict) -> str:
+    """Module location and the links that sit with this assignment."""
+    chunks = []
+    module = a.get("module") or {}
+    if module.get("name"):
+        chunks.append(f"\n  Module: {module['name']}")
+        if module.get("url"):
+            chunks.append(f"\n  {module['url']}")
+    related = a.get("related") or []
+    if related:
+        chunks.append("\n  With it:")
+        for item in related:
+            kind = item.get("kind")
+            label = f"{item['title']} · {kind}" if kind else item["title"]
+            chunks.append(f"\n  - {label}")
+            if item.get("url"):
+                chunks.append(f"\n    {item['url']}")
+    return "".join(chunks)
 
 
 _DONE = {"submitted", "graded", "pending_review", "excused"}
@@ -546,9 +734,12 @@ def canvas(ctx: Context) -> str:
 
 @mcp.tool()
 def assignments(ctx: Context, course: str | None = None) -> str:
-    """Published assignments, with how to submit, whether it's turned in, and a short description.
+    """Published assignments, plus where each one sits and what to open with it.
 
-    Pass a course name or code to limit the list to one class.
+    Includes how to submit, whether it's turned in, a short description,
+    the module it lives in, and links to files or pages that sit with it
+    or share its title. Pass a course name or code to limit the list to
+    one class. Week tools stay shorter and do not include this context.
     """
     refusal = _refuse_canvas(ctx)
     if refusal:
@@ -556,7 +747,7 @@ def assignments(ctx: Context, course: str | None = None) -> str:
 
     def fetch() -> str:
         with _client() as client:
-            items = _all_assignments(client, course)
+            items = _all_assignments(client, course, with_context=True)
         if not items:
             return f"No active assignments{f' for {course}' if course else ''}."
         return "\n".join(_format_assignment(item, detailed=True) for item in items)

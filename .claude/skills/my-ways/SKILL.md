@@ -29,9 +29,13 @@ not know. Pass what I confirm as `outside` to `priorities`. Do not invent
 a block. Do not put schoolwork on top of a fixed block. Leave the empty
 hours empty.
 
-When I name a class, call `assignments` with that name or code. Use
-`canvas` only when I ask who's teaching, what's in the modules, or what
-was just announced.
+When I name a class, or I want to talk about an assignment — what it asks,
+where it sits in the modules, or the file that goes with it — call
+`assignments` with that name or code. The line names the module and links
+files or pages that sit with it or share its title. Open those links.
+Do not invent a file, a page, or a module that is not on the line.
+Use `canvas` only when I ask who's teaching, the module list itself, or
+what was just announced.
 
 When I ask whether the week is heavy, or what's coming after this week,
 call `academic_week` once. Don't re-fetch it to narrate the same load again.
