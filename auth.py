@@ -10,6 +10,7 @@ Prototype-grade, honestly: in-memory stores (single instance), public
 clients + PKCE only, codes expire in 5 minutes.
 """
 import hashlib
+import html
 import json
 import os
 import secrets
@@ -62,9 +63,9 @@ def _better_login(email, password, signup):
     payload = {"email": email, "password": password}
     if signup:
         payload["name"] = email.split("@")[0]
-    _, session = _better(path, payload)
+    body, session = _better(path, payload)
     if not session:
-        raise RuntimeError("no session cookie returned")
+        raise RuntimeError("no session cookie returned; Neon replied: " + json.dumps(body)[:300])
     out, _ = _better("/token", cookie=session, method="GET")
     return out["token"], session
 
@@ -174,17 +175,23 @@ def register_oauth_routes(mcp):
                     payload["verification_callback_url"] = ISSUER
                 tokens = _stack(path, payload)
         except (urllib.error.HTTPError, RuntimeError) as e:
-            try:
-                stack_code = json.loads(e.read()).get("code", "")
-            except Exception:
-                stack_code = ""
+            detail = str(e)
+            stack_code = ""
+            if isinstance(e, urllib.error.HTTPError):
+                try:
+                    raw = e.read().decode("utf-8", "replace")
+                    detail = f"HTTP {e.code} from Neon: {raw[:300]}"
+                    stack_code = json.loads(raw).get("code", "")
+                except Exception:
+                    detail = f"HTTP {e.code} from Neon"
+            print(f"[auth] {'signup' if signup else 'signin'} failed: {detail}", flush=True)
             if "EXISTS" in stack_code or (signup and getattr(e, "code", 0) == 409):
                 msg = "Good news: this email already has an account — press SIGN IN instead."
             elif not signup:
                 msg = "Sign-in failed — wrong password, or no account yet (then use sign up)."
             else:
                 msg = "Sign-up failed — password may be too weak (8+ characters), or try sign in."
-            return _render_form(params, err=msg)
+            return _render_form(params, err=msg + " [" + html.escape(detail) + "]")
         code = secrets.token_urlsafe(24)
         _codes[code] = {"tokens": tokens,
                         "code_challenge": params["code_challenge"],
