@@ -65,6 +65,78 @@ class FormatTest(unittest.TestCase):
         self.assertLessEqual(len(text), 40)
 
 
+def _item(**overrides):
+    base = {
+        "course": "CIS 7000",
+        "name": "Reading response",
+        "due_at": datetime(2026, 10, 19, 3, 59, tzinfo=timezone.utc),
+        "points_possible": 10,
+        "html_url": "https://canvas.upenn.edu/courses/1/assignments/2",
+        "description": "Write 300 words.",
+        "stated_minutes": None,
+        "submission_types": ["online_text_entry"],
+        "submission": {"workflow_state": "unsubmitted", "missing": False, "late": False},
+    }
+    base.update(overrides)
+    return base
+
+
+class PriorityTest(unittest.TestCase):
+    def test_submitted_work_is_not_open(self):
+        self.assertTrue(server._is_open(_item()))
+        self.assertFalse(server._is_open(_item(submission={"workflow_state": "submitted", "missing": False, "late": False})))
+        self.assertFalse(server._is_open(_item(submission={"workflow_state": "graded", "missing": False, "late": False})))
+        self.assertFalse(server._is_open(_item(submission={"workflow_state": "excused", "missing": False, "late": False})))
+
+    def test_due_soonest_breaks_ties_toward_more_points(self):
+        sooner_small = _item(name="Draft", due_at=datetime(2026, 10, 16, 3, 59, tzinfo=timezone.utc), points_possible=5)
+        sooner_big = _item(name="Exam", due_at=datetime(2026, 10, 16, 3, 59, tzinfo=timezone.utc), points_possible=40)
+        later = _item(name="Paper", due_at=datetime(2026, 10, 20, 3, 59, tzinfo=timezone.utc), points_possible=100)
+        ranked = server._by_due([later, sooner_small, sooner_big])
+        self.assertEqual([item["name"] for item in ranked], ["Exam", "Draft", "Paper"])
+
+    def test_most_points_puts_an_unscored_item_last(self):
+        big = _item(name="Exam", points_possible=40)
+        none = _item(name="Participation", points_possible=None)
+        small = _item(name="Draft", points_possible=5)
+        ranked = server._by_points([small, none, big])
+        self.assertEqual([item["name"] for item in ranked], ["Exam", "Draft", "Participation"])
+
+    def test_stated_time_is_read_from_the_text_only(self):
+        self.assertIsNone(server._minutes_mentioned("Write 300 words. Worth 10 points."))
+        self.assertEqual(server._minutes_mentioned("This takes about 45 minutes."), 45)
+        self.assertEqual(server._minutes_mentioned("Plan on 2 hours."), 120)
+        self.assertEqual(server._minutes_mentioned("Give it half an hour."), 30)
+        self.assertEqual(server._minutes_mentioned("Set aside an hour."), 60)
+
+    def test_semester_mean_skips_a_course_with_no_score(self):
+        rows = [
+            {"course": "CIS 7000", "score": 90, "grade": "A-", "final_score": 80, "final_grade": "B-"},
+            {"course": "ENGL 0200", "score": 80, "grade": "B-", "final_score": 80, "final_grade": "B-"},
+            {"course": "MUSC 0001", "score": None, "grade": "", "final_score": None, "final_grade": ""},
+        ]
+        self.assertEqual(server._semester_score(rows), 85)
+        text = server._format_priorities(
+            [_item(stated_minutes=45, description="This takes about 45 minutes.")],
+            rows,
+        )
+        self.assertIn("Due soonest", text)
+        self.assertIn("Most points still open", text)
+        self.assertIn("Least time stated", text)
+        self.assertIn("stated time: 45 minutes", text)
+        self.assertIn("[CIS 7000] 90%", text)
+        self.assertIn("final, counting work not yet graded as zero: 80%", text)
+        self.assertIn("[MUSC 0001] no score posted", text)
+        self.assertIn("85.0% across 2 courses.", text)
+        self.assertIn("Not weighted by credits.", text)
+        self.assertIn("1 course had no score", text)
+
+    def test_points_are_not_reported_as_time(self):
+        text = server._format_priorities([_item()], [{"course": "CIS 7000", "score": None, "grade": "", "final_score": None, "final_grade": ""}])
+        self.assertIn("No open assignment states a time.", text)
+        self.assertNotIn("stated time:", text)
+
+
 class _Req:
     def __init__(self, headers):
         self.headers = headers

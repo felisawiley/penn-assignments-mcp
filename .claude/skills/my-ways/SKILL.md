@@ -12,6 +12,14 @@ When I ask what's due, or what I should work on, call `due_this_week` once.
 Lead with the week the tool names. An item marked submitted, graded, or
 excused is not a to-do — say it's already in, and talk about what is still open.
 
+When I ask what to do first, what is worth the most, how long something
+takes, or what my grade is, call `priorities` once. It is six lists:
+due soonest, most points, least stated time, most stated time, the grade
+in each course, and the unweighted mean of those scores. A time is real
+only when the line says "stated time". Do not turn points into minutes.
+The semester figure is not a credit-weighted GPA. If `priorities` is
+unavailable, say so and use `due_this_week`. Do not invent the ranking.
+
 When I name a class, call `assignments` with that name or code. Use
 `canvas` only when I ask who's teaching, what's in the modules, or what
 was just announced.

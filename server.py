@@ -210,13 +210,15 @@ def _course_assignments(client: httpx.Client, course: dict) -> list[dict]:
         if item.get("workflow_state") != "published":
             continue
         submission = item.get("submission") or {}
+        description = _plain(item.get("description"))
         out.append({
             "course": label,
             "name": item.get("name") or "Untitled",
             "due_at": _parse_due(item.get("due_at")),
             "points_possible": item.get("points_possible"),
             "html_url": item.get("html_url") or "",
-            "description": _plain(item.get("description")),
+            "description": description,
+            "stated_minutes": _minutes_mentioned(_plain(item.get("description"), limit=4000)),
             "submission_types": item.get("submission_types") or [],
             "submission": {
                 "workflow_state": submission.get("workflow_state") or "",
@@ -304,6 +306,153 @@ def _format_assignment(a: dict, *, detailed: bool = False) -> str:
     if detailed and a.get("description"):
         line += f"\n  {a['description']}"
     return line
+
+
+_DONE = {"submitted", "graded", "pending_review", "excused"}
+_DURATION = re.compile(
+    r"\b(?:(?P<num>\d+(?:\.\d+)?)\s*(?P<unit>hours?|hrs?|minutes?|mins?)|(?P<word>half an|half|an|a)\s+hour)\b",
+    re.I,
+)
+
+
+def _minutes_mentioned(text: str) -> float | None:
+    """A duration the assignment text actually states. Points are not time."""
+    if not text:
+        return None
+    match = _DURATION.search(text)
+    if not match:
+        return None
+    word = (match.group("word") or "").lower()
+    if word:
+        return 30.0 if "half" in word else 60.0
+    amount = float(match.group("num"))
+    unit = match.group("unit").lower()
+    if unit.startswith("h"):
+        return amount * 60
+    return amount
+
+
+def _format_minutes(minutes: float) -> str:
+    if minutes < 60:
+        unit = "minute" if minutes == 1 else "minutes"
+        return f"{minutes:g} {unit}"
+    hours = minutes / 60
+    unit = "hour" if hours == 1 else "hours"
+    return f"{hours:g} {unit}"
+
+
+def _is_open(assignment: dict) -> bool:
+    state = (assignment.get("submission") or {}).get("workflow_state") or ""
+    return state not in _DONE
+
+
+def _distant() -> datetime:
+    return datetime.max.replace(tzinfo=timezone.utc)
+
+
+def _by_due(items: list[dict]) -> list[dict]:
+    return sorted(items, key=lambda a: (a["due_at"] or _distant(), -(a.get("points_possible") or 0)))
+
+
+def _by_points(items: list[dict]) -> list[dict]:
+    return sorted(
+        items,
+        key=lambda a: (
+            a.get("points_possible") is None,
+            -(a.get("points_possible") or 0),
+            a["due_at"] or _distant(),
+        ),
+    )
+
+
+def _course_score(course: dict) -> dict:
+    enrollment = None
+    for item in course.get("enrollments") or []:
+        kind = (item.get("type") or "").lower()
+        if kind in {"", "student", "studentenrollment"}:
+            enrollment = item
+            break
+    score = enrollment.get("computed_current_score") if enrollment else None
+    final_score = enrollment.get("computed_final_score") if enrollment else None
+    return {
+        "course": _course_label(course),
+        "score": score if isinstance(score, (int, float)) else None,
+        "grade": (enrollment.get("computed_current_grade") or "") if enrollment else "",
+        "final_score": final_score if isinstance(final_score, (int, float)) else None,
+        "final_grade": (enrollment.get("computed_final_grade") or "") if enrollment else "",
+    }
+
+
+def _semester_score(rows: list[dict]) -> float | None:
+    scores = [row["score"] for row in rows if isinstance(row["score"], (int, float))]
+    if not scores:
+        return None
+    return sum(scores) / len(scores)
+
+
+def _ranked_lines(items: list[dict], *, with_time: bool = False) -> str:
+    if not items:
+        return "  Nothing open."
+    shown = items[:8]
+    lines = []
+    for item in shown:
+        lines.append(_format_assignment(item))
+        if with_time and item.get("stated_minutes") is not None:
+            lines.append(f"  stated time: {_format_minutes(item['stated_minutes'])}")
+    extra = len(items) - len(shown)
+    if extra:
+        lines.append(f"  and {extra} more.")
+    return "\n".join(lines)
+
+
+def _format_priorities(open_items: list[dict], grades: list[dict]) -> str:
+    timed = [item for item in open_items if item.get("stated_minutes") is not None]
+    by_short = sorted(timed, key=lambda a: (a["stated_minutes"], a["due_at"] or _distant()))
+    by_long = sorted(timed, key=lambda a: (-a["stated_minutes"], a["due_at"] or _distant()))
+    lines = [
+        "Open work only. Submitted, graded, and excused assignments are left out.",
+        "Canvas does not record how long work takes. A time below is one the assignment text stated.",
+        "",
+        "Due soonest (same day: more points first):",
+        _ranked_lines(_by_due(open_items)),
+        "",
+        "Most points still open:",
+        _ranked_lines(_by_points(open_items)),
+        "",
+        "Least time stated:",
+        _ranked_lines(by_short, with_time=True) if by_short else "  No open assignment states a time.",
+        "",
+        "Most time stated:",
+        _ranked_lines(by_long, with_time=True) if by_long else "  No open assignment states a time.",
+        "",
+        "Grade in each course (current score):",
+    ]
+    if not grades:
+        lines.append("  No active courses.")
+    for row in sorted(grades, key=lambda row: row["course"].lower()):
+        if row["score"] is None:
+            lines.append(f"- [{row['course']}] no score posted")
+            continue
+        letter = f" ({row['grade']})" if row["grade"] else ""
+        lines.append(f"- [{row['course']}] {row['score']:g}%{letter}")
+        if row["final_score"] is not None and row["final_score"] != row["score"]:
+            final_letter = f" ({row['final_grade']})" if row["final_grade"] else ""
+            lines.append(
+                f"  final, counting work not yet graded as zero: {row['final_score']:g}%{final_letter}"
+            )
+    overall = _semester_score(grades)
+    counted = sum(1 for row in grades if row["score"] is not None)
+    missing = len(grades) - counted
+    lines.append("")
+    lines.append("Semester, unweighted mean of those current scores:")
+    if overall is None:
+        lines.append("  No course has posted a score. This is not a credit-weighted GPA.")
+    else:
+        lines.append(f"  {overall:.1f}% across {counted} course{'s' if counted != 1 else ''}.")
+        lines.append("  Not weighted by credits. Canvas does not provide credit hours here.")
+        if missing:
+            lines.append(f"  {missing} course{'s' if missing != 1 else ''} had no score and {'were' if missing != 1 else 'was'} left out.")
+    return "\n".join(lines)
 
 
 @mcp.tool()
@@ -469,6 +618,34 @@ def academic_week(ctx: Context) -> str:
             "\n".join(_format_assignment(item) for item in next_week) if next_week else "  Nothing posted yet."
         )
         return "\n".join(lines)
+
+    return _call(fetch)
+
+
+@mcp.tool()
+def priorities(ctx: Context) -> str:
+    """How to order open work, and the grade Canvas has posted.
+
+    Six separate lists, not one blended score: due soonest, most points,
+    least stated time, most stated time, current grade in each course,
+    and the unweighted mean of those course scores. Time appears only
+    when the assignment text states a duration.
+    """
+    refusal = _refuse_canvas(ctx)
+    if refusal:
+        return refusal
+
+    def fetch() -> str:
+        with _client() as client:
+            open_items = [item for item in _all_assignments(client) if _is_open(item)]
+            courses = _get_all(
+                client,
+                "/courses",
+                enrollment_state="active",
+                **{"include[]": "total_scores"},
+            )
+        grades = [_course_score(course) for course in courses]
+        return _format_priorities(open_items, grades)
 
     return _call(fetch)
 
