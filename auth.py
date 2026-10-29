@@ -96,14 +96,13 @@ button{{border:none;background:#1E4D2B;color:#fff;font-weight:bold;cursor:pointe
 .alt{{background:#fff;color:#1E4D2B;border:2px solid #1E4D2B}}
 .err{{color:#F0654E;font-size:.85em}}</style></head><body>
 <div class="card"><h1>assignment-mcp</h1>
-<p>Sign in to see your coursework. A guest sees none of it. {err}</p>
+<p>Sign in to see your coursework. {err}</p>
 <form method="post" action="{issuer}/authorize">
 {hidden}
 <input name="email" type="email" placeholder="email" required>
 <input name="password" type="password" placeholder="password" required>
 <button name="mode" value="signin" type="submit">Sign in</button>
 <button name="mode" value="signup" type="submit" class="alt">New here — sign up</button>
-<button name="mode" value="guest" type="submit" class="alt" formnovalidate style="border-style:dashed;color:#777;border-color:#999">Continue as guest — no coursework</button>
 </form></div></body></html>"""
 
 
@@ -162,17 +161,6 @@ def register_oauth_routes(mcp):
         params = {k: urllib.parse.unquote(form.get(k, "")) for k in
                   ("client_id", "redirect_uri", "state", "code_challenge",
                    "code_challenge_method", "response_type", "scope", "resource")}
-        if form.get("mode") == "guest":
-            code = secrets.token_urlsafe(24)
-            _codes[code] = {"tokens": {"access_token": GUEST_TOKEN, "refresh_token": GUEST_TOKEN},
-                            "code_challenge": params["code_challenge"],
-                            "redirect_uri": params["redirect_uri"],
-                            "client_id": params["client_id"],
-                            "exp": time.time() + 300}
-            sep = "&" if "?" in params["redirect_uri"] else "?"
-            return RedirectResponse(
-                f'{params["redirect_uri"]}{sep}code={code}&state={urllib.parse.quote(params["state"], safe="")}',
-                status_code=302)
         email, password = form.get("email", ""), form.get("password", "")
         signup = form.get("mode") == "signup"
         try:
@@ -238,8 +226,9 @@ def register_oauth_routes(mcp):
                 except Exception:
                     return JSONResponse({"error": "invalid_grant"}, status_code=400)
             if rt == GUEST_TOKEN:
-                return JSONResponse({"access_token": GUEST_TOKEN, "token_type": "bearer",
-                                     "expires_in": 31536000, "refresh_token": GUEST_TOKEN})
+                # Guest sign-in is gone. Reject old guest refresh tokens so a
+                # stuck connector is forced back through the login page.
+                return JSONResponse({"error": "invalid_grant"}, status_code=400)
             try:
                 t = _stack("/auth/sessions/current/refresh", payload={},
                            headers={"X-Stack-Refresh-Token": form.get("refresh_token", "")})

@@ -869,5 +869,36 @@ from auth import register_oauth_routes
 
 register_oauth_routes(mcp)
 
+class RequireAuthChallenge:
+    """Answer a tokenless /mcp request with 401 + WWW-Authenticate.
+
+    Without this, a connector that has no token is served as a guest (200),
+    so claude.ai never starts OAuth and the login page never appears.
+    A request that carries any bearer token passes through unchanged.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].rstrip("/") == "/mcp":
+            headers = {k.decode().lower(): v.decode() for k, v in scope["headers"]}
+            if not headers.get("authorization", "").lower().startswith("bearer "):
+                from auth import ISSUER
+                challenge = (f'Bearer resource_metadata="{ISSUER}'
+                             '/.well-known/oauth-protected-resource"')
+                body = b'{"error":"unauthorized"}'
+                await send({"type": "http.response.start", "status": 401,
+                            "headers": [(b"content-type", b"application/json"),
+                                        (b"www-authenticate", challenge.encode()),
+                                        (b"content-length", str(len(body)).encode())]})
+                await send({"type": "http.response.body", "body": body})
+                return
+        await self.app(scope, receive, send)
+
+
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    import uvicorn
+
+    uvicorn.run(RequireAuthChallenge(mcp.streamable_http_app()),
+                host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
