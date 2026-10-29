@@ -21,18 +21,23 @@ Render deploys whichever GitHub repo its Blueprint is pointed at. Point that Blu
 |---|---|
 | `user_status()` | Guest, or the signed-in email. Always answers. |
 | `canvas()` | Active courses, instructors, up to ten modules each, and the two latest announcements. |
-| `assignments(course?)` | Every published assignment, earliest due date first. Pass a course name or code (`CIS 7000`) to limit it to one class. |
+| `assignments(course?)` | Every published assignment, earliest due date first, plus the module it lives in and links to files or pages that sit with it. Pass a course name or code (`CIS 7000`) to limit it to one class. |
 | `due_this_week()` | Assignments due this Monday–Sunday week. The first line names the week and the timezone. |
 | `academic_week()` | This week, next week, and where the load is heavy: two or more due the same day, or two or more from the same course. |
 
 The four Canvas tools refuse a guest. Coursework is not a shared shelf ([ADR-0008](docs/adr/0008-coursework-is-not-a-commons.md)). A bad or expired token is an error, not a guest.
 
-`assignments()` includes how you turn the work in and a short plain-text description. The week tools stay shorter: course, name, due date, points, turn-in status, and the Canvas link. A line looks like this:
+`assignments()` includes how you turn the work in, a short plain-text description, the module the assignment lives in, and links to files or pages placed with it or titled like it. The file itself is not downloaded. The week tools stay shorter: course, name, due date, points, turn-in status, and the Canvas link. A detailed line looks like this:
 
 ```text
 - [CIS 7000] Reading response — due Sun Oct 18, 11:59 PM (10 pts) · text entry · submitted
   https://canvas.upenn.edu/courses/1/assignments/2
   Write 300 words.
+  Module: Week 3
+  https://canvas.upenn.edu/courses/1/modules/9
+  With it:
+  - Smith reading.pdf · file
+    https://canvas.upenn.edu/courses/1/files/4
 ```
 
 Status is shown when it changes what you would do next (`submitted`, `graded`, `pending review`, `missing`, `late`). An assignment you have not turned in yet has no status word.
@@ -116,7 +121,7 @@ On the free plan the instance sleeps when idle. The first call after a nap takes
 - [`.claude/skills/my-ways/SKILL.md`](.claude/skills/my-ways/SKILL.md) — when to use this server, and when to leave it alone.
 - [`.env.example`](.env.example) — the variable names, with no token in them.
 - [`test_server.py`](test_server.py) — Monday week boundary, the assignment line, and the guest / bad-token gate.
-- [`docs/adr/`](docs/adr/) — why these choices: the assignments API ([ADR-0005](docs/adr/0005-canvas-rest-api-and-academic-week.md)), what a line includes ([ADR-0006](docs/adr/0006-show-the-assignment-not-just-the-deadline.md)), Eastern time on Render ([ADR-0007](docs/adr/0007-render-runs-on-eastern-time.md)), and why guests see no coursework ([ADR-0008](docs/adr/0008-coursework-is-not-a-commons.md)).
+- [`docs/adr/`](docs/adr/) — why these choices: the assignments API ([ADR-0005](docs/adr/0005-canvas-rest-api-and-academic-week.md)), what a line includes ([ADR-0006](docs/adr/0006-show-the-assignment-not-just-the-deadline.md)), Eastern time on Render ([ADR-0007](docs/adr/0007-render-runs-on-eastern-time.md)), why guests see no coursework ([ADR-0008](docs/adr/0008-coursework-is-not-a-commons.md)), and why a line names its module and the file beside it ([ADR-0009](docs/adr/0009-attach-the-module-and-the-file-beside-it.md)).
 - [`render.yaml`](render.yaml) — the Render service.
 
 ## License
